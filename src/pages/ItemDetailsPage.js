@@ -1244,7 +1244,7 @@ const ItemDetailsPage = () => {
               <Button
                 variant="contained"
                 color="error"
-                onClick={() => handleDelete(selectedDeleteEntry)}
+                onClick={() => handleDelete(selectedDeleteEntry?.id)}
                 sx={{ 
                   bgcolor: 'error.main',
                   color: 'white',
