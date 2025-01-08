@@ -14,7 +14,9 @@ const MainPage = () => {
   const stockButtons = [
     { label: 'Head Office Stock', path: 'head-office' },
     { label: 'Katra Ghee Stock', path: 'katra-ghee' },
-    { label: 'Novelty Stock', path: 'novelty' }
+    { label: 'Novelty Stock', path: 'novelty' },
+    { label: 'Cash Register - 4696 (Unit-3)', path: 'cash-register' },
+    { label: 'Job Card - 4696 (Unit-3)', path: 'job-card' }
   ];
 
   return (

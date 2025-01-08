@@ -109,6 +109,26 @@ const formatValueUnit = (value) => {
   return value; // Return original if no match
 };
 
+const getStatusDot = (quantity, unit) => {
+  const threshold = unit.toLowerCase() === 'mtr' ? 50 : 15;
+  const isAboveThreshold = parseFloat(quantity) >= threshold;
+  
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-block',
+        width: { xs: 12, sm: 14 },
+        height: { xs: 12, sm: 14 },
+        borderRadius: '50%',
+        bgcolor: isAboveThreshold ? 'success.main' : 'error.main',
+        ml: 1.5,
+        boxShadow: '0 0 4px rgba(0,0,0,0.2)'
+      }}
+    />
+  );
+};
+
 const ItemDetailsPage = () => {
   const { type, id } = useParams();
   const navigate = useNavigate();
@@ -608,26 +628,22 @@ const ItemDetailsPage = () => {
                 >
                   Total
                 </Typography>
-                <Typography variant="body1">
-                  {Object.entries(totalsByUnit).map(([unit, total], i) => (
-                    <span key={unit}>
-                      {i > 0 && ', '}
-                      <Box 
-                        component="span" 
-                        sx={{ 
-                          bgcolor: 'primary.light',
-                          color: 'primary.contrastText',
-                          px: 1,
-                          py: 0.5,
-                          borderRadius: 1,
-                          fontSize: '0.875rem'
-                        }}
-                      >
-                        {`${total} ${unit}`}
-                      </Box>
-                    </span>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  {Object.entries(totalsByUnit).map(([unit, total], index) => (
+                    <Typography 
+                      key={unit} 
+                      variant="body1"
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        mr: 2 
+                      }}
+                    >
+                      {total.toFixed(total % 1 === 0 ? 0 : 1)}-{unit}
+                      {getStatusDot(total, unit)}
+                    </Typography>
                   ))}
-                </Typography>
+                </Box>
               </Box>
 
               {/* Images Section */}
@@ -685,79 +701,65 @@ const ItemDetailsPage = () => {
 
               {/* Actions Section */}
               <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'flex-end',
+                display: 'flex',
                 gap: 1,
-                pt: 1
+                ml: 'auto'
               }}>
                 {editMode === entry.id ? (
                   <>
-                    <Button
-                      variant="contained"
+                    <IconButton
+                      onClick={() => handleSaveEdit(entry.id)}
                       color="primary"
                       size="small"
-                      startIcon={<SaveIcon />}
-                      onClick={() => handleSaveEdit(entry.id)}
-                      sx={{ 
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-2px)'
-                        }
+                      sx={{
+                        bgcolor: 'primary.light',
+                        color: 'white',
+                        '&:hover': { bgcolor: 'primary.main' },
+                        display: { xs: 'none', sm: 'inline-flex' }  // Hide on mobile
                       }}
                     >
-                      Save
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color="secondary"
+                      <SaveIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => setEditMode(null)}
+                      color="error"
                       size="small"
-                      startIcon={<CancelIcon />}
-                      onClick={() => {
-                        setEditMode(null);
-                        setEditData({ meters: '', name: '', image_url: '' });
-                      }}
-                      sx={{ 
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-2px)'
-                        }
+                      sx={{
+                        bgcolor: 'error.light',
+                        color: 'white',
+                        '&:hover': { bgcolor: 'error.main' },
+                        display: { xs: 'none', sm: 'inline-flex' }  // Hide on mobile
                       }}
                     >
-                      Cancel
-                    </Button>
+                      <CancelIcon fontSize="small" />
+                    </IconButton>
                   </>
                 ) : (
                   <>
-                    <IconButton 
+                    <IconButton
                       onClick={() => handleEditClick(entry)}
                       color="primary"
-                      sx={{ 
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-2px)',
-                          bgcolor: 'primary.light',
-                          color: 'white'
-                        }
+                      size="small"
+                      sx={{
+                        '&:hover': { bgcolor: 'primary.light', color: 'white' },
+                        display: { xs: 'none', sm: 'inline-flex' }  // Hide on mobile
                       }}
                     >
-                      <EditIcon />
+                      <EditIcon fontSize="small" />
                     </IconButton>
-                    <IconButton 
+                    <IconButton
                       onClick={() => {
                         setSelectedDeleteEntry(entry);
                         setOpenDeleteDialog(true);
                       }}
                       color="error"
-                      sx={{ 
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-2px)',
-                          bgcolor: 'error.light',
-                          color: 'white'
-                        }
+                      size="small"
+                      sx={{
+                        '&:hover': { bgcolor: 'error.light', color: 'white' },
+                        display: { xs: 'none', sm: 'inline-flex' }  // Hide on mobile
                       }}
                     >
-                      <DeleteIcon />
+                      <DeleteIcon fontSize="small" />
                     </IconButton>
                   </>
                 )}
