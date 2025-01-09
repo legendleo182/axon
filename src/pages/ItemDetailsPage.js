@@ -944,7 +944,7 @@ const ItemDetailsPage = () => {
             flex: 1,
             fontSize: { xs: '1.1rem', sm: '1.25rem' }
           }}>
-            {item?.name || 'Item Details'}
+            {`${item?.name || 'Item Details'} (${stockHistory.length})`}
           </Typography>
         </Toolbar>
       </AppBar>

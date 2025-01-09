@@ -22,27 +22,21 @@ const MainPage = () => {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
+        minHeight: 'calc(100vh - 64px)',
         background: 'linear-gradient(145deg, #f0f2f5 0%, #e3e8ef 100%)',
         display: 'flex',
-        alignItems: 'center',
-        py: 4
+        alignItems: 'flex-start',
+        pt: 0
       }}
     >
       <Container maxWidth="sm">
         <Box
           sx={{
             backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            backdropFilter: 'blur(10px)',
-            borderRadius: 4,
-            p: 4,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
-            transform: 'translateY(0)',
-            transition: 'transform 0.2s ease-in-out',
-            '&:hover': {
-              transform: 'translateY(-4px)',
-              boxShadow: '0 12px 48px rgba(0, 0, 0, 0.12)'
-            }
+            borderRadius: 2,
+            p: { xs: 2, sm: 3 },
+            mt: 0,
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
           }}
         >
           <Typography 
@@ -51,13 +45,16 @@ const MainPage = () => {
             gutterBottom 
             align="center"
             sx={{
-              fontWeight: 700,
-              color: 'primary.main',
+              fontWeight: 800,
+              color: 'primary.dark',
               mb: 4,
-              textShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+              fontSize: { xs: '2rem', sm: '2.75rem' },
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              textShadow: '2px 2px 4px rgba(0, 0, 0, 0.1)'
             }}
           >
-            Stock Management System
+            Stock System
           </Typography>
           
           <Stack spacing={2.5} width="100%">

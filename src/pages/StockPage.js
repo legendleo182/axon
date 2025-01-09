@@ -51,6 +51,7 @@ const StockPage = () => {
   // New states for cash register
   const [lastUpdate, setLastUpdate] = useState(null);
   const [selectedDate, setSelectedDate] = useState('');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 600);
 
   const isValidUrl = (url) => {
     try {
@@ -94,6 +95,15 @@ const StockPage = () => {
   useEffect(() => {
     loadItems();
   }, [type]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 600);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const loadItems = async () => {
     try {
@@ -200,14 +210,16 @@ const StockPage = () => {
     switch (type) {
       case 'head-office':
         return 'Head Office Stock';
-      case 'cash-register':
-        return 'Cash Register - 4696 (Unit-3)';
       case 'katra-ghee':
         return 'Katra Ghee Stock';
       case 'novelty':
         return 'Novelty Stock';
+      case 'cash-register':
+        return 'Cash Register - 4696 (Unit-3)';
+      case 'job-card':
+        return 'Job Card - 4696 (Unit-3)';
       default:
-        return 'Stock Management';
+        return 'Stock';
     }
   };
 
@@ -309,15 +321,16 @@ const StockPage = () => {
       const { data, error } = await supabase
         .from('cash_register_status')
         .select('updated_at')
-        .order('updated_at', { ascending: false })
-        .limit(1);
+        .single();
 
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        setLastUpdate(data[0].updated_at);
-      } else {
-        setLastUpdate(null);
+      if (error) {
+        if (error.code === 'PGRST116') {
+          setLastUpdate(null);
+        } else {
+          throw error;
+        }
+      } else if (data) {
+        setLastUpdate(data.updated_at);
       }
     } catch (error) {
       console.error('Error loading update:', error);
@@ -332,7 +345,16 @@ const StockPage = () => {
         return;
       }
 
-      const { error } = await supabase
+      // First clear all previous records
+      const { error: deleteError } = await supabase
+        .from('cash_register_status')
+        .delete()
+        .neq('id', 0); // Just to make sure delete runs
+
+      if (deleteError) throw deleteError;
+
+      // Then insert the new date
+      const { error: insertError } = await supabase
         .from('cash_register_status')
         .insert([
           {
@@ -340,8 +362,9 @@ const StockPage = () => {
           }
         ]);
 
-      if (error) throw error;
+      if (insertError) throw insertError;
 
+      // Set the last update to the selected date
       setLastUpdate(selectedDate);
       showSnackbar('Date updated successfully', 'success');
       setSelectedDate('');
@@ -354,27 +377,28 @@ const StockPage = () => {
   const filteredItems = items.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <Box sx={{
-      minHeight: '100vh',
-      position: 'relative',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center'
-    }}>
+    <Box
+      sx={{
+        minHeight: 'calc(100vh - 64px)', // Subtract header height
+        background: 'linear-gradient(145deg, #f0f2f5 0%, #e3e8ef 100%)',
+        pt: 0 // Remove top padding
+      }}
+    >
       <Box sx={{ 
         width: '100%',
-        maxWidth: '800px', 
-        px: { xs: 2, sm: 3 }, 
-        py: { xs: 2, sm: 3 },
-        mx: 'auto' 
+        maxWidth: '1200px', 
+        mx: 'auto',
+        px: { xs: 2, sm: 3 },
+        pt: 0 // Remove top padding
       }}>
-        <Box sx={{ py: { xs: 2, sm: 4 } }}>
+        <Box sx={{ py: 2 }}>
           <Box sx={{ 
-            mb: 4, 
+            mb: 2,
             display: 'flex', 
             alignItems: 'center',
             flexDirection: { xs: 'column', sm: 'row' },
-            gap: { xs: 2, sm: 0 }
+            gap: { xs: 2, sm: 0 },
+            justifyContent: 'space-between'
           }}>
             <IconButton 
               onClick={() => navigate('/')} 
@@ -388,7 +412,12 @@ const StockPage = () => {
               variant="h4" 
               component="h1"
               sx={{
-                fontSize: { xs: '1.5rem', sm: '2rem' }
+                fontSize: { xs: '1.75rem', sm: '2.5rem' },
+                fontWeight: 700,
+                color: 'primary.dark',
+                letterSpacing: '0.02em',
+                textShadow: '1px 1px 2px rgba(0, 0, 0, 0.1)',
+                pl: 2
               }}
             >
               {getPageTitle()}
@@ -399,25 +428,25 @@ const StockPage = () => {
             <>
               <Grid container spacing={2} sx={{ mb: 4 }}>
                 <Grid item xs={12}>
-                  <Button
-                    startIcon={<AddIcon />}
-                    variant="contained"
-                    onClick={() => setOpenAddDialog(true)}
-                    sx={{ 
-                      py: 1.5,
-                      px: { xs: 2, sm: 4 },
-                      float: { xs: 'none', sm: 'left' },
-                      width: { xs: '100%', sm: 'auto' },
-                      backgroundColor: 'primary.main',
-                      '&:hover': {
-                        backgroundColor: 'primary.dark',
-                      },
-                      boxShadow: 2,
-                      borderRadius: 2
-                    }}
-                  >
-                    {type === 'job-card' ? 'Add Series' : 'Add Item'}
-                  </Button>
+                  <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+                    <Button
+                      startIcon={<AddIcon />}
+                      variant="contained"
+                      onClick={() => setOpenAddDialog(true)}
+                      sx={{ 
+                        py: 1.5,
+                        px: 4,
+                        backgroundColor: 'primary.main',
+                        '&:hover': {
+                          backgroundColor: 'primary.dark',
+                        },
+                        boxShadow: 2,
+                        borderRadius: 2
+                      }}
+                    >
+                      {type === 'job-card' ? 'Add Series' : 'Add Item'}
+                    </Button>
+                  </Box>
                 </Grid>
               </Grid>
 
@@ -434,7 +463,7 @@ const StockPage = () => {
                   gap: { xs: 1, sm: 0 }
                 }}>
                   <Typography variant="h6">
-                    {type === 'job-card' ? 'Series List' : 'Items List'}
+                    {type === 'job-card' ? `Series List (${filteredItems.length})` : `Items List (${filteredItems.length})`}
                   </Typography>
                 </Box>
 
