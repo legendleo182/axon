@@ -95,13 +95,25 @@ function App() {
       const versionInfo = await result.json();
       setServerVersion(versionInfo.version);
       
-      const appInfo = await CapApp.getInfo();
-      setCurrentAppVersion(appInfo.version);
+      setCurrentAppVersion("1.0.0"); // Set to match your current app version
       
       console.log('Server version:', versionInfo.version);
-      console.log('Current app version:', appInfo.version);
+      console.log('Current app version:', "1.0.0");
       
-      if (versionInfo.version !== appInfo.version) {
+      const serverParts = versionInfo.version.split('.').map(Number);
+      const currentParts = "1.0.0".split('.').map(Number);
+      
+      let needsUpdate = false;
+      for (let i = 0; i < 3; i++) {
+        if (serverParts[i] > currentParts[i]) {
+          needsUpdate = true;
+          break;
+        } else if (serverParts[i] < currentParts[i]) {
+          break;
+        }
+      }
+      
+      if (needsUpdate) {
         console.log('Update available');
         setUpdateAvailable(true);
         setShowUpdateDialog(true);
@@ -114,15 +126,25 @@ function App() {
   const applyUpdate = async () => {
     try {
       console.log('Applying update...');
+      
       if ('caches' in window) {
-        await caches.keys().then(function(cacheNames) {
-          return Promise.all(
-            cacheNames.map(function(cacheName) {
-              console.log('Clearing cache:', cacheName);
-              return caches.delete(cacheName);
-            })
-          );
-        });
+        const cacheNames = await caches.keys();
+        await Promise.all(
+          cacheNames.map(cacheName => {
+            console.log('Clearing cache:', cacheName);
+            return caches.delete(cacheName);
+          })
+        );
+      }
+      
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(
+          registrations.map(registration => {
+            console.log('Unregistering service worker');
+            return registration.unregister();
+          })
+        );
       }
       
       const essentialItems = ['session', 'userIP'];
@@ -133,9 +155,10 @@ function App() {
       });
       
       console.log('Cache cleared, reloading...');
-      window.location.reload(true);
+      window.location.href = window.location.href.split('#')[0] + '?t=' + new Date().getTime();
     } catch (error) {
       console.error('Error applying update:', error);
+      window.location.href = window.location.href.split('#')[0] + '?t=' + new Date().getTime();
     }
   };
 
