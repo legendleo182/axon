@@ -956,7 +956,8 @@ const ItemDetailsPage = () => {
           sx={{ 
             p: { xs: 2, sm: 3 },
             borderRadius: 3,
-            height: '100%'
+            height: '100%',
+            display: { xs: 'none', sm: 'block' }  // Hide on mobile, show on web
           }}
         >
           <Box component="form" onSubmit={handleTotalQuantitySubmit}>

@@ -1,0 +1,19 @@
+{
+  "appId": "com.axon.app",
+  "appName": "Axon",
+  "webDir": "build",
+  "server": {
+    "androidScheme": "https",
+    "url": "https://axon-olive.vercel.app",
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  },
+  "plugins": {
+    "LiveUpdates": {
+      "appId": "com.axon.app",
+      "channel": "production",
+      "autoUpdateMethod": "immediate",
+      "maxVersions": 2
+    }
+  }
+}

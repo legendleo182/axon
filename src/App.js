@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { Box, Container, useMediaQuery } from '@mui/material';
+import { Box, Container, useMediaQuery, Dialog, DialogContent, DialogTitle, CircularProgress, Typography, Snackbar, Button } from '@mui/material';
+import { App as CapApp } from '@capacitor/app';
 import theme from './theme';
 import MainPage from './pages/MainPage';
 import StockPage from './pages/StockPage';
@@ -16,6 +17,8 @@ import { checkIpMapping } from './utils/ipManager';
 function App() {
   const [session, setSession] = useState(null);
   const isMobile = useMediaQuery('(max-width:600px)');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
 
   const checkIpAndSession = async () => {
     if (!session) return;
@@ -88,6 +91,26 @@ function App() {
     localStorage.removeItem('loginTime');
   };
 
+  const checkForUpdates = async () => {
+    try {
+      setIsChecking(true);
+      const result = await fetch('/version.json?' + new Date().getTime());
+      const versionInfo = await result.json();
+      
+      const currentVersion = await CapApp.getInfo();
+      
+      if (versionInfo.version !== currentVersion.version) {
+        setUpdateAvailable(true);
+        // Force reload the app to get the latest version
+        window.location.reload(true);
+      }
+      setIsChecking(false);
+    } catch (error) {
+      console.error('Error checking for updates:', error);
+      setIsChecking(false);
+    }
+  };
+
   useEffect(() => {
     let interval;
     
@@ -153,84 +176,126 @@ function App() {
     }
   }, [isMobile, session]);
 
+  useEffect(() => {
+    // Check for updates immediately and then every minute
+    checkForUpdates();
+    const updateInterval = setInterval(checkForUpdates, 60 * 1000);
+
+    return () => clearInterval(updateInterval);
+  }, []);
+
+  if (isChecking) {
+    return (
+      <Dialog open={true}>
+        <DialogTitle>Checking for Updates</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
+            <CircularProgress />
+            <Typography>Please wait while we check for updates...</Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (updateAvailable) {
+    return (
+      <Dialog open={true}>
+        <DialogTitle>Update Available</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
+            <CircularProgress />
+            <Typography>Updating to the latest version...</Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-          <Routes>
-            <Route 
-              path="/login" 
-              element={
-                session ? (
-                  <Navigate to="/" replace />
-                ) : (
-                  <LoginPage />
-                )
-              } 
-            />
-            <Route
-              path="/"
-              element={
-                session ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                    <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
-                      <Header handleLogout={handleLogout} />
-                      <MainPage />
-                    </Container>
-                  </Box>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
-            />
-            <Route
-              path="/stock/:type"
-              element={
-                session ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                    <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
-                      <Header handleLogout={handleLogout} />
-                      <StockPage />
-                    </Container>
-                  </Box>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
-            />
-            <Route
-              path="/item/:type/:id"
-              element={
-                session ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                    <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
-                      <Header handleLogout={handleLogout} />
-                      <ItemDetailsPage />
-                    </Container>
-                  </Box>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
-            />
-            <Route
-              path="/ip-management"
-              element={
-                session ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                    <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
-                      <Header handleLogout={handleLogout} />
-                      <IpManagementPage />
-                    </Container>
-                  </Box>
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
-            />
-            <Route path="*" element={<Navigate to={session ? "/" : "/login"} replace />} />
-          </Routes>
+        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          {session && <Header handleLogout={handleLogout} />}
+          <Container 
+            maxWidth={false} 
+            sx={{ 
+              flexGrow: 1, 
+              p: 0,
+              bgcolor: 'background.default'
+            }}
+          >
+            <Routes>
+              <Route 
+                path="/login" 
+                element={
+                  session ? (
+                    <Navigate to="/" replace />
+                  ) : (
+                    <LoginPage />
+                  )
+                } 
+              />
+              <Route
+                path="/"
+                element={
+                  session ? (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                      <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
+                        <MainPage />
+                      </Container>
+                    </Box>
+                  ) : (
+                    <Navigate to="/login" replace />
+                  )
+                }
+              />
+              <Route
+                path="/stock/:type"
+                element={
+                  session ? (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                      <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
+                        <StockPage />
+                      </Container>
+                    </Box>
+                  ) : (
+                    <Navigate to="/login" replace />
+                  )
+                }
+              />
+              <Route
+                path="/item/:type/:id"
+                element={
+                  session ? (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                      <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
+                        <ItemDetailsPage />
+                      </Container>
+                    </Box>
+                  ) : (
+                    <Navigate to="/login" replace />
+                  )
+                }
+              />
+              <Route
+                path="/ip-management"
+                element={
+                  session ? (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                      <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
+                        <IpManagementPage />
+                      </Container>
+                    </Box>
+                  ) : (
+                    <Navigate to="/login" replace />
+                  )
+                }
+              />
+              <Route path="*" element={<Navigate to={session ? "/" : "/login"} replace />} />
+            </Routes>
+          </Container>
         </Box>
       </Router>
     </ThemeProvider>
