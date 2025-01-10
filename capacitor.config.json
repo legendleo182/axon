@@ -12,7 +12,7 @@
     "LiveUpdates": {
       "appId": "com.axon.app",
       "channel": "production",
-      "autoUpdateMethod": "immediate",
+      "autoUpdateMethod": "background",
       "maxVersions": 2
     }
   }

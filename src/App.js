@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { Box, Container, useMediaQuery, Dialog, DialogContent, DialogTitle, CircularProgress, Typography, Snackbar, Button } from '@mui/material';
+import { Box, Container, useMediaQuery, Snackbar, Button, Dialog, DialogTitle, DialogContent, DialogActions, Typography } from '@mui/material';
 import { App as CapApp } from '@capacitor/app';
 import theme from './theme';
 import MainPage from './pages/MainPage';
@@ -18,13 +18,14 @@ function App() {
   const [session, setSession] = useState(null);
   const isMobile = useMediaQuery('(max-width:600px)');
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [currentAppVersion, setCurrentAppVersion] = useState(null);
+  const [serverVersion, setServerVersion] = useState(null);
 
   const checkIpAndSession = async () => {
     if (!session) return;
     
     try {
-      // Get current IP using multiple services
       const ipServices = [
         'https://api.ipify.org?format=json',
         'https://api.myip.com',
@@ -46,25 +47,23 @@ function App() {
 
       if (!ip) {
         console.error('Could not fetch IP from any service');
-        await handleLogout(); // Logout if IP fetch fails
+        await handleLogout(); 
         return;
       }
       
-      // Check if IP is mapped
       const { data, error } = await checkIpMapping(ip);
       
       if (error || !data || !data.email) {
         console.log('IP not mapped or error:', { error, data });
-        await handleLogout(); // Logout if IP is not mapped
+        await handleLogout(); 
         return;
       }
 
-      // Store the current IP for reference
       localStorage.setItem('userIP', ip);
 
     } catch (error) {
       console.error('Error in IP check:', error);
-      await handleLogout(); // Logout on any error
+      await handleLogout(); 
     }
   };
 
@@ -73,10 +72,9 @@ function App() {
       await supabase.auth.signOut();
       clearLocalStorage();
       setSession(null);
-      window.location.href = '/login'; // Force redirect to login
+      window.location.href = '/login'; 
     } catch (error) {
       console.error('Error during logout:', error);
-      // Still clear everything even if signOut fails
       clearLocalStorage();
       setSession(null);
       window.location.href = '/login';
@@ -93,22 +91,56 @@ function App() {
 
   const checkForUpdates = async () => {
     try {
-      setIsChecking(true);
       const result = await fetch('/version.json?' + new Date().getTime());
       const versionInfo = await result.json();
+      setServerVersion(versionInfo.version);
       
-      const currentVersion = await CapApp.getInfo();
+      const appInfo = await CapApp.getInfo();
+      setCurrentAppVersion(appInfo.version);
       
-      if (versionInfo.version !== currentVersion.version) {
+      console.log('Server version:', versionInfo.version);
+      console.log('Current app version:', appInfo.version);
+      
+      if (versionInfo.version !== appInfo.version) {
+        console.log('Update available');
         setUpdateAvailable(true);
-        // Force reload the app to get the latest version
-        window.location.reload(true);
+        setShowUpdateDialog(true);
       }
-      setIsChecking(false);
     } catch (error) {
       console.error('Error checking for updates:', error);
-      setIsChecking(false);
     }
+  };
+
+  const applyUpdate = async () => {
+    try {
+      console.log('Applying update...');
+      if ('caches' in window) {
+        await caches.keys().then(function(cacheNames) {
+          return Promise.all(
+            cacheNames.map(function(cacheName) {
+              console.log('Clearing cache:', cacheName);
+              return caches.delete(cacheName);
+            })
+          );
+        });
+      }
+      
+      const essentialItems = ['session', 'userIP'];
+      Object.keys(localStorage).forEach(key => {
+        if (!essentialItems.includes(key)) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      console.log('Cache cleared, reloading...');
+      window.location.reload(true);
+    } catch (error) {
+      console.error('Error applying update:', error);
+    }
+  };
+
+  const skipUpdate = () => {
+    setShowUpdateDialog(false);
   };
 
   useEffect(() => {
@@ -116,10 +148,7 @@ function App() {
     
     const setupSession = async () => {
       if (session) {
-        // Initial check
         await checkIpAndSession();
-        
-        // Check IP mapping every minute
         interval = setInterval(checkIpAndSession, 60000);
       }
     };
@@ -135,7 +164,6 @@ function App() {
 
   useEffect(() => {
     const setupAuth = async () => {
-      // Check current session
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       
       if (currentSession) {
@@ -143,7 +171,6 @@ function App() {
         setSession(currentSession);
       }
 
-      // Listen for auth changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
         console.log('Auth state changed:', _event, newSession);
         setSession(newSession);
@@ -158,7 +185,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // On mobile, check localStorage first
     if (isMobile) {
       const persistedSession = localStorage.getItem('session');
       if (persistedSession) {
@@ -166,7 +192,6 @@ function App() {
       }
     }
 
-    // On mobile, update persisted session
     if (isMobile) {
       if (session) {
         localStorage.setItem('session', JSON.stringify(session));
@@ -177,40 +202,11 @@ function App() {
   }, [isMobile, session]);
 
   useEffect(() => {
-    // Check for updates immediately and then every minute
     checkForUpdates();
     const updateInterval = setInterval(checkForUpdates, 60 * 1000);
 
     return () => clearInterval(updateInterval);
   }, []);
-
-  if (isChecking) {
-    return (
-      <Dialog open={true}>
-        <DialogTitle>Checking for Updates</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
-            <CircularProgress />
-            <Typography>Please wait while we check for updates...</Typography>
-          </Box>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  if (updateAvailable) {
-    return (
-      <Dialog open={true}>
-        <DialogTitle>Update Available</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
-            <CircularProgress />
-            <Typography>Updating to the latest version...</Typography>
-          </Box>
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -296,6 +292,68 @@ function App() {
               <Route path="*" element={<Navigate to={session ? "/" : "/login"} replace />} />
             </Routes>
           </Container>
+
+          <Dialog 
+            open={showUpdateDialog} 
+            onClose={skipUpdate}
+            sx={{
+              '& .MuiDialog-paper': {
+                borderRadius: 2,
+                minWidth: { xs: '80%', sm: 400 }
+              }
+            }}
+          >
+            <DialogTitle sx={{ pb: 1 }}>
+              New Update Available
+            </DialogTitle>
+            <DialogContent sx={{ pb: 2 }}>
+              <Typography>
+                A new version of the app is available.
+                {currentAppVersion && serverVersion && (
+                  <Box sx={{ mt: 1, color: 'text.secondary' }}>
+                    Current version: {currentAppVersion}
+                    <br />
+                    New version: {serverVersion}
+                  </Box>
+                )}
+              </Typography>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button 
+                onClick={skipUpdate} 
+                color="inherit"
+                sx={{ 
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  px: 3
+                }}
+              >
+                Later
+              </Button>
+              <Button 
+                onClick={applyUpdate} 
+                variant="contained" 
+                sx={{ 
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  px: 3
+                }}
+              >
+                Update Now
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Snackbar
+            open={updateAvailable && !showUpdateDialog}
+            message="New update available!"
+            action={
+              <Button color="primary" size="small" onClick={() => setShowUpdateDialog(true)}>
+                Update Now
+              </Button>
+            }
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          />
         </Box>
       </Router>
     </ThemeProvider>
