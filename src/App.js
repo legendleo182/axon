@@ -16,10 +16,10 @@ import { checkIpMapping } from './utils/ipManager';
 
 function App() {
   const [session, setSession] = useState(null);
-  const isMobile = useMediaQuery('(max-width:600px)');
+  const [isMobile] = useState(!!window.matchMedia('(max-width: 600px)').matches);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
-  const [currentAppVersion, setCurrentAppVersion] = useState(null);
+  const [currentAppVersion, setCurrentAppVersion] = useState("1.0.0");
   const [serverVersion, setServerVersion] = useState(null);
 
   const checkIpAndSession = async () => {
@@ -91,17 +91,34 @@ function App() {
 
   const checkForUpdates = async () => {
     try {
-      const result = await fetch('/version.json?' + new Date().getTime());
+      const vercelUrl = 'https://axon-olive.vercel.app/version.json';
+      const result = await fetch(`${vercelUrl}?t=${new Date().getTime()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      
       const versionInfo = await result.json();
+      console.log('Server version from Vercel:', versionInfo.version);
       setServerVersion(versionInfo.version);
       
-      setCurrentAppVersion("1.0.0"); // Set to match your current app version
+      let appVersion = "1.0.0";
+      try {
+        const appInfo = await CapApp.getInfo();
+        if (appInfo && appInfo.version) {
+          appVersion = appInfo.version;
+        }
+      } catch (e) {
+        console.log('Using default version:', appVersion);
+      }
       
-      console.log('Server version:', versionInfo.version);
-      console.log('Current app version:', "1.0.0");
+      setCurrentAppVersion(appVersion);
+      console.log('Current app version:', appVersion);
       
       const serverParts = versionInfo.version.split('.').map(Number);
-      const currentParts = "1.0.0".split('.').map(Number);
+      const currentParts = appVersion.split('.').map(Number);
       
       let needsUpdate = false;
       for (let i = 0; i < 3; i++) {
@@ -155,10 +172,15 @@ function App() {
       });
       
       console.log('Cache cleared, reloading...');
-      window.location.href = window.location.href.split('#')[0] + '?t=' + new Date().getTime();
+      
+      if (window.Capacitor?.isNative) {
+        window.location.href = 'https://axon-olive.vercel.app?t=' + new Date().getTime();
+      } else {
+        window.location.reload(true);
+      }
     } catch (error) {
       console.error('Error applying update:', error);
-      window.location.href = window.location.href.split('#')[0] + '?t=' + new Date().getTime();
+      window.location.reload(true);
     }
   };
 
@@ -226,7 +248,7 @@ function App() {
 
   useEffect(() => {
     checkForUpdates();
-    const updateInterval = setInterval(checkForUpdates, 60 * 1000);
+    const updateInterval = setInterval(checkForUpdates, 15000);
 
     return () => clearInterval(updateInterval);
   }, []);
