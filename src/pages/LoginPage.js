@@ -18,7 +18,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import { checkIpMapping } from '../utils/ipManager';
 
-const LoginPage = () => {
+const LoginPage = ({ setSession }) => {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -32,6 +32,7 @@ const LoginPage = () => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        setSession(session);
         navigate('/', { replace: true });
       }
     };
@@ -80,7 +81,7 @@ const LoginPage = () => {
     };
 
     getIpWithFallback();
-  }, [navigate]);
+  }, [navigate, setSession]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -151,13 +152,14 @@ const LoginPage = () => {
 
       // Set success and store user info
       setSuccess(true);
+      setSession(data.session);
       localStorage.setItem('userName', email.split('@')[0]);
       localStorage.setItem('userIP', ipAddress);
       localStorage.setItem('loginTime', new Date().toLocaleString());
 
       // Navigate after a brief delay to show success message
       setTimeout(() => {
-        console.log('Navigating to home...');
+        console.log('Navigating to main page...');
         navigate('/', { replace: true });
       }, 1500);
 
@@ -181,12 +183,13 @@ const LoginPage = () => {
       const { data: { session }, error } = await supabase.auth.getSession();
       console.log('Current session:', session);
       if (session) {
-        console.log('Active session found, navigating to home...');
+        console.log('Active session found, navigating to main page...');
+        setSession(session);
         navigate('/', { replace: true });
       }
     };
     checkSession();
-  }, [navigate]);
+  }, [navigate, setSession]);
 
   return (
     <Box

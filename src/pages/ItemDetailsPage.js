@@ -912,7 +912,15 @@ const ItemDetailsPage = () => {
   }
 
   const handleCloseImage = () => {
+    console.log('Closing image dialog');
     setSelectedImage(null);
+  };
+
+  const handleDialogClick = (e) => {
+    // Close dialog when clicking outside the image
+    if (e.target === e.currentTarget) {
+      handleCloseImage();
+    }
   };
 
   return (
@@ -1272,6 +1280,7 @@ const ItemDetailsPage = () => {
         <Dialog
           open={Boolean(selectedImage)}
           onClose={handleCloseImage}
+          onClick={handleDialogClick}
           maxWidth="lg"
           PaperProps={{
             sx: {
@@ -1288,36 +1297,37 @@ const ItemDetailsPage = () => {
             }
           }}
         >
-          <Box
-            sx={{
-              position: 'relative',
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
+          <DialogContent 
+            sx={{ 
+              p: 0, 
+              height: '100%', 
+              display: 'flex', 
+              alignItems: 'center', 
               justifyContent: 'center',
-              bgcolor: 'black'
+              cursor: 'pointer'
             }}
+            onClick={handleDialogClick}
           >
             <IconButton
               onClick={handleCloseImage}
               sx={{
                 position: 'absolute',
-                right: 16,
-                top: 16,
+                right: 8,
+                top: 8,
                 color: 'white',
                 bgcolor: 'rgba(0, 0, 0, 0.5)',
                 '&:hover': {
-                  bgcolor: 'rgba(0, 0, 0, 0.7)',
+                  bgcolor: 'rgba(0, 0, 0, 0.7)'
                 },
-                zIndex: 1
+                zIndex: 1200
               }}
             >
               <CloseIcon />
             </IconButton>
             {selectedImage && (
               <img
-                src={getGoogleDriveImageUrl(selectedImage)}
+                key={selectedImage} // Add key to force remount
+                src={selectedImage ? getGoogleDriveImageUrl(selectedImage) : ''}
                 alt="Preview"
                 style={{
                   maxWidth: '100%',
@@ -1325,12 +1335,25 @@ const ItemDetailsPage = () => {
                   objectFit: 'contain'
                 }}
                 onError={(e) => {
-                  console.error('Error loading image:', e);
-                  showSnackbar('Error loading image', 'error');
+                  if (!selectedImage) return; // Don't process if dialog is closing
+                  e.target.onerror = null;
+                  console.error('Failed to load image:', selectedImage);
+                  // Try alternative URL format
+                  if (selectedImage && selectedImage.includes('drive.google.com')) {
+                    const fileId = selectedImage.match(/\/file\/d\/([^/]+)/)?.[1];
+                    if (fileId) {
+                      const altUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+                      console.log('Trying alternative URL:', altUrl);
+                      e.target.src = altUrl;
+                      return;
+                    }
+                  }
+                  e.target.src = '/placeholder-image.png';
+                  showSnackbar('Error loading image. Please check if the image URL is correct and accessible.', 'error');
                 }}
               />
             )}
-          </Box>
+          </DialogContent>
         </Dialog>
 
         {/* Snackbar */}

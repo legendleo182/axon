@@ -65,31 +65,56 @@ const StockPage = () => {
   const getGoogleDriveImageUrl = (url) => {
     console.log('Original URL:', url);
     try {
+      if (!url) return '';
+      
       // Check if it's a Google Drive URL
       if (url.includes('drive.google.com')) {
         let fileId = '';
         
-        // Extract file ID
+        // Handle different Google Drive URL formats
         if (url.includes('/file/d/')) {
           fileId = url.match(/\/file\/d\/([^/]+)/)?.[1];
+        } else if (url.includes('id=')) {
+          fileId = url.match(/id=([^&]+)/)?.[1];
+        } else if (url.includes('open?id=')) {
+          fileId = url.match(/open\?id=([^&]+)/)?.[1];
         }
         
         if (fileId) {
-          // Using an alternative format that works better
-          const directUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
-          console.log('Converted URL:', directUrl);
-          return directUrl;
+          // Remove any additional parameters from fileId
+          fileId = fileId.split('&')[0].split('?')[0];
+          // Using direct Google Drive content URL
+          return `https://drive.google.com/uc?export=view&id=${fileId}`;
         }
       }
+      
+      // If it's already a direct image URL, return as is
+      if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        return url;
+      }
+      
+      // If it's already a Google Photos URL, return as is
+      if (url.includes('photos.google.com') || url.includes('lh3.googleusercontent.com')) {
+        return url;
+      }
+      
       return url;
     } catch (error) {
-      console.error('Error processing Google Drive URL:', error);
+      console.error('Error processing URL:', error);
       return url;
     }
   };
 
   const handleCloseImage = () => {
+    console.log('Closing image dialog');
     setSelectedImage(null);
+  };
+
+  const handleDialogClick = (e) => {
+    // Close dialog when clicking outside the image
+    if (e.target === e.currentTarget) {
+      handleCloseImage();
+    }
   };
 
   useEffect(() => {
@@ -978,12 +1003,12 @@ const StockPage = () => {
             </Box>
           )}
 
-          {/* Dialogs and other components remain unchanged */}
           {/* Image Preview Dialog */}
           <Dialog
             open={Boolean(selectedImage)}
             onClose={handleCloseImage}
             maxWidth="lg"
+            onClick={handleDialogClick}
             PaperProps={{
               sx: {
                 width: '90vw',
@@ -999,36 +1024,46 @@ const StockPage = () => {
               }
             }}
           >
-            <Box
-              sx={{
-                position: 'relative',
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
+            <DialogContent 
+              sx={{ 
+                p: 0, 
+                height: '100%', 
+                display: 'flex', 
+                alignItems: 'center', 
                 justifyContent: 'center',
-                bgcolor: 'black'
+                cursor: 'pointer' 
               }}
+              onClick={handleDialogClick}
             >
               <IconButton
                 onClick={handleCloseImage}
                 sx={{
                   position: 'absolute',
-                  right: 16,
-                  top: 16,
+                  right: 8,
+                  top: 8,
                   color: 'white',
                   bgcolor: 'rgba(0, 0, 0, 0.5)',
                   '&:hover': {
-                    bgcolor: 'rgba(0, 0, 0, 0.7)',
+                    bgcolor: 'rgba(0, 0, 0, 0.7)'
                   },
-                  zIndex: 1
+                  zIndex: 1200
                 }}
               >
                 <CloseIcon />
               </IconButton>
-              {selectedImage && (
+              <Box
+                sx={{
+                  position: 'relative',
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
                 <img
-                  src={getGoogleDriveImageUrl(selectedImage)}
+                  key={selectedImage} // Add key to force remount
+                  src={selectedImage ? getGoogleDriveImageUrl(selectedImage) : ''}
                   alt="Preview"
                   style={{
                     maxWidth: '100%',
@@ -1036,12 +1071,25 @@ const StockPage = () => {
                     objectFit: 'contain'
                   }}
                   onError={(e) => {
-                    console.error('Error loading image:', e);
-                    showSnackbar('Error loading image', 'error');
+                    if (!selectedImage) return; // Don't process if dialog is closing
+                    e.target.onerror = null;
+                    console.error('Failed to load image:', selectedImage);
+                    // Try alternative URL format
+                    if (selectedImage && selectedImage.includes('drive.google.com')) {
+                      const fileId = selectedImage.match(/\/file\/d\/([^/]+)/)?.[1];
+                      if (fileId) {
+                        const altUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+                        console.log('Trying alternative URL:', altUrl);
+                        e.target.src = altUrl;
+                        return;
+                      }
+                    }
+                    e.target.src = '/placeholder-image.png';
+                    showSnackbar('Error loading image. Please check if the image URL is correct and accessible.', 'error');
                   }}
                 />
-              )}
-            </Box>
+              </Box>
+            </DialogContent>
           </Dialog>
 
           {/* Delete Confirmation Dialog */}
