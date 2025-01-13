@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import {
@@ -24,7 +24,8 @@ import {
   Alert,
   AppBar,
   Toolbar,
-  Stack
+  Stack,
+  Tooltip
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -52,12 +53,46 @@ const boxColors = [
   '#2ECC71'   // green
 ];
 
-const isValidUrl = (string) => {
+const isValidUrl = (url) => {
   try {
-    new URL(string);
+    new URL(url);
     return true;
-  } catch (_) {
+  } catch (error) {
     return false;
+  }
+};
+
+const getGoogleDriveImageUrl = (url) => {
+  console.log('Processing URL:', url);
+  try {
+    if (!url) return '';
+    
+    // Check if it's a Google Drive URL
+    if (url.includes('drive.google.com')) {
+      let fileId = '';
+      
+      // Handle different Google Drive URL formats
+      if (url.includes('/file/d/')) {
+        fileId = url.match(/\/file\/d\/([^/]+)/)?.[1];
+      } else if (url.includes('id=')) {
+        fileId = url.match(/id=([^&]+)/)?.[1];
+      } else if (url.includes('open?id=')) {
+        fileId = url.match(/open\?id=([^&]+)/)?.[1];
+      }
+      
+      if (fileId) {
+        // Remove any additional parameters from fileId
+        fileId = fileId.split('&')[0].split('?')[0];
+        console.log('Extracted file ID:', fileId);
+        // Use the direct thumbnail URL which is more reliable
+        return `https://lh3.googleusercontent.com/d/${fileId}`;
+      }
+    }
+    
+    return url;
+  } catch (error) {
+    console.error('Error processing URL:', error);
+    return url;
   }
 };
 
@@ -65,35 +100,11 @@ const getRandomElement = (array) => {
   return array[Math.floor(Math.random() * array.length)];
 };
 
-const getGoogleDriveImageUrl = (url) => {
-  console.log('Original URL:', url);
-  try {
-    // Check if it's a Google Drive URL
-    if (url.includes('drive.google.com')) {
-      let fileId = '';
-      
-      // Extract file ID
-      if (url.includes('/file/d/')) {
-        fileId = url.match(/\/file\/d\/([^/]+)/)?.[1];
-      }
-      
-      if (fileId) {
-        // Using an alternative format that works better
-        const directUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
-        console.log('Converted URL:', directUrl);
-        return directUrl;
-      }
-    }
-    return url;
-  } catch (error) {
-    console.error('Error processing Google Drive URL:', error);
-    return url;
-  }
-};
-
 const formatValueUnit = (value) => {
+  if (!value) return ''; // Handle undefined, null, or empty values
+  
   // Remove extra spaces and clean up
-  const cleanValue = value.trim();
+  const cleanValue = value.toString().trim();
   
   // Try to match number and unit with different formats
   let match = cleanValue.match(/^(\d+\.?\d*)-?(mtr|pcs|MTR|PCS)$/i);
@@ -106,28 +117,389 @@ const formatValueUnit = (value) => {
     // Convert unit to lowercase for consistency
     return `${number}-${unit.toLowerCase()}`;
   }
-  return value; // Return original if no match
+  return cleanValue; // Return cleaned value if no match
 };
 
 const getStatusDot = (quantity, unit) => {
-  const threshold = unit.toLowerCase() === 'mtr' ? 50 : 15;
+  // Add safety checks
+  if (!quantity || !unit) return null;
+  
+  const threshold = (unit || '').toLowerCase() === 'mtr' ? 50 : 15;
   const isAboveThreshold = parseFloat(quantity) >= threshold;
+  const statusText = isAboveThreshold 
+    ? `Good Stock Level (${quantity} ${unit})` 
+    : `Low Stock Alert (${quantity} ${unit})`;
+  
+  return (
+    <Tooltip 
+      title={
+        <Typography 
+          sx={{ 
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '0.75rem',
+            fontWeight: 500 
+          }}
+        >
+          {statusText}
+        </Typography>
+      } 
+      arrow 
+      placement="right"
+    >
+      <Box
+        component="span"
+        sx={{
+          display: 'inline-block',
+          width: { xs: 8, sm: 10 },
+          height: { xs: 8, sm: 10 },
+          borderRadius: '50%',
+          bgcolor: isAboveThreshold ? 'success.main' : 'error.main',
+          ml: 1.5,
+          cursor: 'pointer',
+          transition: 'all 0.2s ease-in-out',
+          boxShadow: '0 0 4px rgba(0,0,0,0.2)',
+          '&:hover': {
+            transform: 'scale(1.2)',
+            boxShadow: theme => `0 0 8px ${isAboveThreshold ? theme.palette.success.main : theme.palette.error.main}`,
+          }
+        }}
+      />
+    </Tooltip>
+  );
+};
+
+const calculateTotal = (values) => {
+  console.log('Calculating total for values:', values);
+  if (!values) return '0';
+  
+  // Split by pipe and clean up each value
+  const items = values.split('|').map(v => v.trim());
+  console.log('Split items:', items);
+  let mtrTotal = 0;
+  let pcsTotal = 0;
+  
+  items.forEach(item => {
+    console.log('Processing item:', item);
+    // Match numbers followed by unit (mtr or pcs)
+    const match = item.match(/(\d+\.?\d*)\s*-\s*(mtr|pcs|MTR|PCS)/i);
+    if (match) {
+      const value = parseFloat(match[1]);
+      const unit = match[2].toLowerCase();
+      console.log('Matched:', { value, unit });
+      
+      if (unit === 'mtr') {
+        mtrTotal += value;
+      } else if (unit === 'pcs') {
+        pcsTotal += value;
+      }
+    }
+  });
+  
+  console.log('Totals:', { mtrTotal, pcsTotal });
+  const totals = [];
+  if (mtrTotal > 0) totals.push(`${mtrTotal.toFixed(mtrTotal % 1 === 0 ? 0 : 1)}-mtr`);
+  if (pcsTotal > 0) totals.push(`${pcsTotal.toFixed(pcsTotal % 1 === 0 ? 0 : 1)}-pcs`);
+  
+  const result = totals.join(' | ') || '0';
+  console.log('Final result:', result);
+  return result;
+};
+
+const formatName = (name, values) => {
+  if (!name) return '-';
+  return name;
+};
+
+const formatValues = (values) => {
+  if (!values) return '-';
+  // Split by | and trim each value
+  return values.split('|').map(v => v.trim()).join(' | ');
+};
+
+const extractNameAndValues = (fullName) => {
+  if (!fullName) return { name: '', values: '' };
+  
+  const match = fullName.match(/^(.*?)\s*\[VALUES:\s*([^\]]+)\]/);
+  if (!match) return { name: fullName, values: '' };
+  
+  const [, name, values] = match;
+  console.log('Extracted:', { name, values });
+  return { name: name.trim(), values: values.trim() };
+};
+
+const StatusDotMemo = React.memo(({ quantity, unit }) => {
+  if (!quantity || !unit) return null;
+  
+  const threshold = (unit || '').toLowerCase() === 'mtr' ? 50 : 15;
+  const numericQuantity = parseFloat(quantity);
+  
+  let color = '#4CAF50'; // Green for good stock
+  let boxShadow = '0 0 8px #4CAF50';
+  let title = 'Good Stock Level';
+  
+  if (isNaN(numericQuantity)) {
+    color = '#9E9E9E';
+    boxShadow = '0 0 8px #9E9E9E';
+    title = 'Invalid Quantity';
+  } else if (numericQuantity < threshold) {
+    color = '#F44336';
+    boxShadow = '0 0 8px #F44336';
+    title = `Low Stock Level (Need ${threshold} ${unit} for good status)`;
+  }
   
   return (
     <Box
       component="span"
+      title={title}
       sx={{
         display: 'inline-block',
-        width: { xs: 12, sm: 14 },
-        height: { xs: 12, sm: 14 },
+        width: '10px',
+        height: '10px',
         borderRadius: '50%',
-        bgcolor: isAboveThreshold ? 'success.main' : 'error.main',
-        ml: 1.5,
-        boxShadow: '0 0 4px rgba(0,0,0,0.2)'
+        backgroundColor: color,
+        marginLeft: '8px',
+        boxShadow: 'none',
+        transition: 'all 0.3s ease-in-out',
+        cursor: 'pointer',
+        '&:hover': {
+          transform: 'scale(1.3)',
+          boxShadow: boxShadow,
+        },
+        '&:active': {
+          transform: 'scale(0.9)',
+        }
       }}
     />
   );
-};
+});
+
+const TableRowMemo = React.memo(function TableRowMemo({ 
+  entry, 
+  editMode, 
+  editData, 
+  handleEdit, 
+  handleSave, 
+  handleCancel, 
+  setEditData,
+  validateValues,
+  setSelectedImage,
+  setSelectedDeleteEntry,
+  setOpenDeleteDialog,
+  setEditMode,
+  calculateTotal,
+  isValidUrl
+}) {
+  // Get initial values when entering edit mode
+  React.useEffect(() => {
+    if (editMode === entry.id) {
+      // Convert pipe-separated to comma-separated
+      const commaValues = entry.values.split('|').map(v => v.trim()).join(', ');
+      setEditData(prev => ({
+        ...prev,
+        meters: commaValues
+      }));
+    }
+  }, [editMode, entry.id, entry.values, setEditData]);
+
+  const handleImageClick = (imageUrl) => {
+    if (!imageUrl) return;
+    console.log('Original image URL:', imageUrl);
+    const processedUrl = getGoogleDriveImageUrl(imageUrl);
+    console.log('Processed image URL:', processedUrl);
+    setSelectedImage(processedUrl);
+  };
+
+  return (
+    <TableRow
+      hover
+      sx={{
+        cursor: 'pointer',
+        transition: 'background-color 0.2s',
+        '&:hover': {
+          backgroundColor: 'rgba(0, 0, 0, 0.04)',
+        },
+      }}
+    >
+      <TableCell>{entry.index}</TableCell>
+      <TableCell>
+        {editMode === entry.id ? (
+          <TextField
+            fullWidth
+            size="small"
+            value={editData.name || ''}
+            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+          />
+        ) : (
+          entry.name
+        )}
+      </TableCell>
+      <TableCell>
+        {editMode === entry.id ? (
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="e.g., 5-mtr, 3-pcs"
+            value={editData.meters}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              setEditData(prev => ({ ...prev, meters: newValue }));
+            }}
+            error={editData.meters && !validateValues(editData.meters)}
+          />
+        ) : (
+          entry.values
+        )}
+      </TableCell>
+      <TableCell>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          {calculateTotal(editMode === entry.id ? editData.meters : entry.values).split(' | ').map((total, index) => {
+            const [value, unit] = (total || '').split('-');
+            return (
+              <Box 
+                key={index} 
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  '&:hover': {
+                    '& .MuiTypography-root': {
+                      color: 'primary.main',
+                      transform: 'translateX(2px)',
+                    }
+                  }
+                }}
+              >
+                <Typography 
+                  variant="body2"
+                  sx={{ 
+                    fontFamily: 'Inter, sans-serif',
+                    fontWeight: 500,
+                    fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                    letterSpacing: '0.01em',
+                    transition: 'all 0.2s ease-in-out',
+                    color: 'text.primary',
+                    cursor: 'default',
+                    '&:hover': {
+                      color: 'primary.main'
+                    }
+                  }}
+                >
+                  {total}
+                </Typography>
+                <StatusDotMemo quantity={value} unit={unit} />
+              </Box>
+            );
+          })}
+        </Box>
+      </TableCell>
+      <TableCell>
+        {editMode === entry.id ? (
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Enter image URL"
+            value={editData.image_url || ''}
+            onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
+          />
+        ) : (
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 1
+          }}>
+            {entry.image_url && isValidUrl(entry.image_url) && (
+              <IconButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleImageClick(entry.image_url);
+                }}
+                sx={{ 
+                  p: 0,
+                  '&:hover': {
+                    transform: 'scale(1.1)',
+                    transition: 'transform 0.2s'
+                  }
+                }}
+              >
+                <img 
+                  src="/circle.png" 
+                  alt="View" 
+                  style={{ 
+                    width: '24px', 
+                    height: '24px',
+                    objectFit: 'contain'
+                  }} 
+                />
+              </IconButton>
+            )}
+          </Box>
+        )}
+      </TableCell>
+      <TableCell>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {editMode === entry.id ? (
+            <>
+              <IconButton
+                size="small"
+                onClick={() => handleSave(entry.id)}
+                color="primary"
+                sx={{ 
+                  p: { xs: 0.5, sm: 1 },
+                  '&:hover': { bgcolor: 'primary.light', color: 'white' }
+                }}
+              >
+                <SaveIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+              </IconButton>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setEditMode(null);
+                  setEditData({ meters: '', name: '', image_url: '' });
+                }}
+                color="secondary"
+                sx={{ 
+                  p: { xs: 0.5, sm: 1 },
+                  bgcolor: 'secondary.light',
+                  color: 'white',
+                  '&:hover': { bgcolor: 'secondary.main' }
+                }}
+              >
+                <CancelIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+              </IconButton>
+            </>
+          ) : (
+            <>
+              <IconButton
+                size="small"
+                onClick={() => handleEdit(entry)}
+                color="primary"
+                sx={{ 
+                  p: { xs: 0.5, sm: 1 },
+                  '&:hover': { bgcolor: 'primary.light', color: 'white' }
+                }}
+              >
+                <EditIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+              </IconButton>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setSelectedDeleteEntry(entry);
+                  setOpenDeleteDialog(true);
+                }}
+                color="secondary"
+                sx={{ 
+                  p: { xs: 0.5, sm: 1 },
+                  '&:hover': { bgcolor: 'secondary.light', color: 'white' }
+                }}
+              >
+                <DeleteIcon sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
+              </IconButton>
+            </>
+          )}
+        </Box>
+      </TableCell>
+    </TableRow>
+  );
+});
 
 const ItemDetailsPage = () => {
   const { type, id } = useParams();
@@ -163,28 +535,21 @@ const ItemDetailsPage = () => {
     setSnackbar({ open: true, message, severity });
   };
 
-  const validateValues = (values) => {
-    // Split values and check each one
-    const valuesList = values.split(',').map(v => v.trim()).filter(v => v);
-    const invalidValues = [];
+  const validateValues = (value) => {
+    if (!value) return true; // Allow empty value
 
-    for (const value of valuesList) {
-      // First try with the dash
-      let match = value.match(/^\d+\.?\d*-?(mtr|pcs|MTR|PCS)$/i);
-      if (!match) {
-        // Then try with space
-        match = value.match(/^\d+\.?\d*\s*(mtr|pcs|MTR|PCS)$/i);
-      }
-      if (!match) {
-        invalidValues.push(value);
-      }
-    }
+    // Split by commas and trim whitespace
+    const values = value.split(',').map(v => v.trim());
+    
+    // Allow partial input while typing
+    const isValid = values.every(val => {
+      if (!val) return true; // Skip empty values
+      // Allow number followed by optional -mtr or -pcs
+      // This allows typing in progress like "78.5-" or "78.5-m"
+      return /^\d+\.?\d*(-?(mtr|pcs)?)?$/i.test(val);
+    });
 
-    if (invalidValues.length > 0) {
-      showSnackbar(`Please add units (mtr or pcs) to these values: ${invalidValues.join(', ')}`, 'error');
-      return false;
-    }
-    return true;
+    return isValid;
   };
 
   useEffect(() => {
@@ -406,78 +771,59 @@ const ItemDetailsPage = () => {
   };
 
   const handleEditClick = (entry) => {
-    // Extract just the name part without the VALUES
-    const namePart = entry.name.split('[VALUES:')[0].trim();
-    // Get values part and replace | with commas
-    const valuesPart = entry.name.match(/\[VALUES:([^\]]+)\]/)?.[1].split('|').map(v => v.trim()).join(', ') || '';
-    
-    setEditData({
-      name: namePart,
-      meters: valuesPart,
-      image_url: entry.image_url
-    });
+    console.log('handleEditClick - Before:', { entry, editMode, editData });
+    const { name, values } = extractNameAndValues(entry.name);
+    console.log('handleEditClick - After extract:', { name, values });
     setEditMode(entry.id);
+    setEditData({
+      name: name,
+      meters: values,
+      image_url: entry.image_url || ''
+    });
+    console.log('handleEditClick - After setEditData:', { name, values, editMode: entry.id });
   };
 
-  const handleSaveEdit = async (entryId) => {
+  const handleSaveEdit = async (id) => {
     try {
-      // Get the original entry
-      const entry = stockHistory.find(e => e.id === entryId);
-      let updatedName = editData.name;
-      let quantity = 0;
-      
-      // If editing values, use the new values
-      if (editData.meters) {
-        // Validate values before saving
-        if (!validateValues(editData.meters)) {
-          return; // Stop if validation fails
-        }
+      // Validate format only when saving
+      const values = editData.meters.split(',').map(v => v.trim());
+      const isValidFormat = values.every(val => {
+        if (!val) return true;
+        return /^\d+\.?\d*-(mtr|pcs)$/i.test(val);
+      });
 
-        // Clean up and format each value
-        const cleanedValues = editData.meters
-          .split(',')
-          .map(v => formatValueUnit(v.trim()))
-          .filter(v => v) // Remove empty values
-          .join(' | ');
-        
-        updatedName = `${editData.name.split('[VALUES:')[0].trim()} [VALUES:${cleanedValues}]`;
-        
-        // Calculate total quantity from all values
-        quantity = editData.meters
-          .split(',')
-          .map(v => v.trim())
-          .reduce((total, value) => {
-            const match = value.match(/(\d+\.?\d*)\s*(mtr|pcs|MTR|PCS)/i);
-            return total + (match ? parseFloat(match[1]) : 0);
-          }, 0);
-      } else {
-        // If only editing name, preserve the existing VALUES part
-        const existingValues = entry.name.match(/\[VALUES:([^\]]+)\]/);
-        if (existingValues) {
-          updatedName = `${editData.name.split('[VALUES:')[0].trim()} [VALUES:${existingValues[1]}]`;
-          quantity = entry.quantity;
-        }
-      }
-
-      const { error } = await supabase
-        .from('stock')
-        .update({
-          name: updatedName,
-          quantity: quantity,
-          image_url: editData.image_url !== undefined ? editData.image_url : entry.image_url
-        })
-        .eq('id', entryId);
-
-      if (error) {
-        console.error('Error updating entry:', error);
-        showSnackbar('Error updating entry: ' + error.message, 'error');
+      if (!isValidFormat) {
+        showSnackbar('Invalid value format. Use format like "78.5-mtr" or "30-pcs"', 'error');
         return;
       }
 
-      showSnackbar('Entry updated successfully!', 'success');
+      // Convert comma-separated to pipe-separated for storage
+      const formattedValues = values
+        .filter(v => v)
+        .join(' | ');
+
+      const formattedName = `${editData.name}[VALUES:${formattedValues}]`;
+      
+      const { error } = await supabase
+        .from('stock')
+        .update({
+          name: formattedName,
+          image_url: editData.image_url
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Update local state
+      setStockHistory(stockHistory.map(entry =>
+        entry.id === id
+          ? { ...entry, name: formattedName, image_url: editData.image_url }
+          : entry
+      ));
+
       setEditMode(null);
-      setEditData({ meters: '', name: '', image_url: '' });
-      await loadStockHistory(item.id);
+      setEditData({ name: '', meters: '', image_url: '' });
+      showSnackbar('Entry updated successfully', 'success');
     } catch (error) {
       console.error('Error updating entry:', error);
       showSnackbar('Error updating entry', 'error');
@@ -599,8 +945,11 @@ const ItemDetailsPage = () => {
                     size="small"
                     placeholder="Enter values (e.g., 10-mtr, 20-pcs)"
                     value={editData.meters}
-                    onChange={(e) => setEditData({ ...editData, meters: e.target.value })}
-                    helperText="Separate multiple values with commas (e.g., 10-mtr, 20-pcs)"
+                    onChange={(e) => {
+                      // Allow any input while typing
+                      setEditData({ ...editData, meters: e.target.value });
+                    }}
+                    error={editData.meters && !validateValues(editData.meters)}
                   />
                 ) : (
                   <Typography variant="body1">
@@ -640,7 +989,7 @@ const ItemDetailsPage = () => {
                       }}
                     >
                       {total.toFixed(total % 1 === 0 ? 0 : 1)}-{unit}
-                      {getStatusDot(total, unit)}
+                      <StatusDotMemo quantity={total} unit={unit} />
                     </Typography>
                   ))}
                 </Box>
@@ -666,35 +1015,43 @@ const ItemDetailsPage = () => {
                   Images
                 </Typography>
                 {editMode === entry.id ? (
-                  <TextField
-                    fullWidth
-                    size="small"
-                    placeholder="Enter image URL"
-                    value={editData.image_url || ''}
-                    onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
-                  />
-                ) : (
-                  entry.image_url && isValidUrl(entry.image_url) && (
-                    <IconButton
-                      onClick={() => setSelectedImage(entry.image_url)}
-                      sx={{ 
-                        p: 0,
-                        '&:hover': {
-                          transform: 'scale(1.1)',
-                          transition: 'transform 0.2s'
-                        }
-                      }}
-                    >
-                      <img 
-                        src="/circle.png" 
-                        alt="View" 
-                        style={{ 
-                          width: '32px', 
-                          height: '32px',
-                          objectFit: 'contain'
-                        }} 
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="Image URL"
+                      value={editData.image_url || ''}
+                      onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
+                    />
+                    {editData.image_url && (
+                      <Box
+                        component="img"
+                        src={isValidUrl(editData.image_url) ? editData.image_url : getGoogleDriveImageUrl(editData.image_url)}
+                        alt="Preview"
+                        sx={{
+                          width: 50,
+                          height: 50,
+                          objectFit: 'cover',
+                          borderRadius: 1
+                        }}
                       />
-                    </IconButton>
+                    )}
+                  </Box>
+                ) : (
+                  entry.image_url && (
+                    <Box
+                      component="img"
+                      src={isValidUrl(entry.image_url) ? entry.image_url : getGoogleDriveImageUrl(entry.image_url)}
+                      alt="Stock Entry"
+                      sx={{
+                        width: 50,
+                        height: 50,
+                        objectFit: 'cover',
+                        borderRadius: 1,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setSelectedImage(entry.image_url)}
+                    />
                   )
                 )}
               </Box>
@@ -773,7 +1130,7 @@ const ItemDetailsPage = () => {
 
   const renderManualEntryForm = () => (
     <Paper elevation={0} sx={{ p: 3, borderRadius: 2, bgcolor: 'background.paper' }}>
-      <Box component="form" onSubmit={showEntryForm ? handleManualEntry : handleTotalQuantitySubmit}>
+      <Box component="form" onSubmit={handleTotalQuantitySubmit}>
         {!showEntryForm ? (
           <>
             <Typography variant="h6" gutterBottom sx={{ color: 'text.primary', fontWeight: 600 }}>
@@ -798,8 +1155,17 @@ const ItemDetailsPage = () => {
               sx={{ 
                 py: 1.5,
                 bgcolor: 'primary.main',
-                '&:hover': { bgcolor: 'primary.dark' },
-                '&:disabled': { bgcolor: 'action.disabledBackground' }
+                color: 'white',
+                boxShadow: '0 2px 8px rgba(25, 118, 210, 0.25)',
+                '&:hover': {
+                  bgcolor: 'primary.dark',
+                  transform: 'translateY(-1px)',
+                  boxShadow: '0 4px 12px rgba(25, 118, 210, 0.35)',
+                },
+                '&:disabled': {
+                  transform: 'translateY(0)',
+                },
+                transition: 'all 0.2s ease'
               }}
             >
               Continue
@@ -811,18 +1177,36 @@ const ItemDetailsPage = () => {
               Enter Details for Entry {totalQuantity - remainingEntries + 1} of {totalQuantity}
             </Typography>
             {entries.length > 0 && (
-              <Paper elevation={0} sx={{ mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                <Typography variant="subtitle2" gutterBottom sx={{ color: 'text.secondary', fontWeight: 600 }}>
+              <Paper elevation={0} sx={{ 
+                mb: 3, 
+                p: 2, 
+                bgcolor: 'grey.50',
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'grey.300'
+              }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ 
+                  color: 'primary.main',
+                  fontWeight: 600 
+                }}>
                   Previous Entries:
                 </Typography>
                 {entries.map((entry, index) => (
-                  <Typography key={index} variant="body2" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
+                  <Typography 
+                    key={index} 
+                    variant="body2" 
+                    sx={{ 
+                      fontFamily: 'monospace',
+                      color: 'primary.main'
+                    }}
+                  >
                     Entry {index + 1}: {entry.value.toFixed(entry.value % 1 === 0 ? 0 : 1)}-{entry.unit}
                   </Typography>
                 ))}
               </Paper>
             )}
-            <Grid container spacing={2}>
+
+            <Grid container spacing={{ xs: 2, sm: 3 }}>
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -832,6 +1216,17 @@ const ItemDetailsPage = () => {
                   onChange={(e) => setStockData({ ...stockData, meters: e.target.value })}
                   size="small"
                   required
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      '&:hover fieldset': {
+                        borderColor: 'primary.main',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: 'primary.main',
+                      }
+                    }
+                  }}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -843,6 +1238,17 @@ const ItemDetailsPage = () => {
                   value={stockData.name}
                   onChange={(e) => setStockData({ ...stockData, name: e.target.value })}
                   size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      '&:hover fieldset': {
+                        borderColor: 'primary.main',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: 'primary.main',
+                      }
+                    }
+                  }}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -853,28 +1259,50 @@ const ItemDetailsPage = () => {
                   value={stockData.unit}
                   onChange={(e) => setStockData({ ...stockData, unit: e.target.value })}
                   size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      '&:hover fieldset': {
+                        borderColor: 'primary.main',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: 'primary.main',
+                      }
+                    }
+                  }}
                 >
                   <MenuItem value="mtr">Meters</MenuItem>
                   <MenuItem value="pcs">Pieces</MenuItem>
                 </TextField>
               </Grid>
             </Grid>
+
             <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
               <Button
-                fullWidth
                 variant="contained"
-                type="submit"
+                onClick={handleManualEntry}
                 sx={{ 
+                  flex: 1,
                   py: 1.5,
+                  borderRadius: 2,
                   bgcolor: 'primary.main',
-                  '&:hover': { bgcolor: 'primary.dark' }
+                  color: 'white',
+                  boxShadow: '0 2px 8px rgba(25, 118, 210, 0.25)',
+                  '&:hover': {
+                    bgcolor: 'primary.dark',
+                    transform: 'translateY(-1px)',
+                    boxShadow: '0 4px 12px rgba(25, 118, 210, 0.35)',
+                  },
+                  '&:active': {
+                    transform: 'translateY(0)',
+                  },
+                  transition: 'all 0.2s ease'
                 }}
               >
                 Add Entry ({remainingEntries} remaining)
               </Button>
               <Button
                 variant="outlined"
-                color="secondary"
                 onClick={() => {
                   setShowEntryForm(false);
                   setTotalQuantity('');
@@ -882,13 +1310,14 @@ const ItemDetailsPage = () => {
                   setRemainingEntries(0);
                 }}
                 sx={{ 
+                  flex: 1,
                   py: 1.5,
-                  borderColor: 'secondary.main',
-                  color: 'secondary.main',
+                  borderRadius: 2,
+                  borderColor: 'error.main',
+                  color: 'error.main',
                   '&:hover': {
-                    borderColor: 'secondary.dark',
-                    bgcolor: 'secondary.light',
-                    color: 'white'
+                    bgcolor: 'error.lighter',
+                    borderColor: 'error.dark',
                   }
                 }}
               >
@@ -900,6 +1329,46 @@ const ItemDetailsPage = () => {
       </Box>
     </Paper>
   );
+
+  const renderTableBody = () => {
+    return stockHistory.map((entry, index) => {
+      const { name, values } = extractNameAndValues(entry.name);
+      console.log('renderTableBody - Processing entry:', { 
+        originalName: entry.name,
+        extractedName: name, 
+        extractedValues: values 
+      });
+
+      const processedEntry = {
+        ...entry,
+        index: index + 1,
+        name,
+        values
+      };
+
+      console.log('renderTableBody - Final entry:', processedEntry);
+
+      return (
+        <TableRowMemo
+          key={entry.id}
+          entry={processedEntry}
+          editMode={editMode}
+          editData={editData}
+          handleEdit={handleEditClick}
+          handleSave={handleSaveEdit}
+          handleCancel={() => setEditMode(null)}
+          setEditData={setEditData}
+          validateValues={validateValues}
+          setSelectedImage={setSelectedImage}
+          setSelectedDeleteEntry={setSelectedDeleteEntry}
+          setOpenDeleteDialog={setOpenDeleteDialog}
+          setEditMode={setEditMode}
+          calculateTotal={calculateTotal}
+          isValidUrl={isValidUrl}
+        />
+      );
+    });
+  };
 
   if (!item) {
     return (
@@ -985,7 +1454,7 @@ const ItemDetailsPage = () => {
                   value={totalQuantity}
                   onChange={(e) => setTotalQuantity(e.target.value)}
                   required
-                  inputProps={{ min: "1", max: "6" }}
+                  inputProps={{ min: 1, max: 6 }}
                   size="small"
                   sx={{
                     '& .MuiOutlinedInput-root': {
@@ -1209,7 +1678,30 @@ const ItemDetailsPage = () => {
             mb: 3
           }}
         >
-          {renderStockHistory()}
+          <TableContainer component={Paper} sx={{ mt: 3 }}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Index</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Values</TableCell>
+                  <TableCell>Total</TableCell>
+                  <TableCell>Images</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {renderTableBody()}
+                {stockHistory.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      No entries found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
 
         {/* Delete Confirmation Dialog */}
@@ -1280,7 +1772,6 @@ const ItemDetailsPage = () => {
         <Dialog
           open={Boolean(selectedImage)}
           onClose={handleCloseImage}
-          onClick={handleDialogClick}
           maxWidth="lg"
           PaperProps={{
             sx: {
@@ -1297,37 +1788,35 @@ const ItemDetailsPage = () => {
             }
           }}
         >
-          <DialogContent 
-            sx={{ 
-              p: 0, 
-              height: '100%', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              cursor: 'pointer'
+          <IconButton
+            onClick={handleCloseImage}
+            sx={{
+              position: 'absolute',
+              right: 8,
+              top: 8,
+              color: 'white',
+              bgcolor: 'rgba(0, 0, 0, 0.5)',
+              '&:hover': {
+                bgcolor: 'rgba(0, 0, 0, 0.7)'
+              },
+              zIndex: 1
             }}
-            onClick={handleDialogClick}
           >
-            <IconButton
-              onClick={handleCloseImage}
-              sx={{
-                position: 'absolute',
-                right: 8,
-                top: 8,
-                color: 'white',
-                bgcolor: 'rgba(0, 0, 0, 0.5)',
-                '&:hover': {
-                  bgcolor: 'rgba(0, 0, 0, 0.7)'
-                },
-                zIndex: 1200
-              }}
-            >
-              <CloseIcon />
-            </IconButton>
+            <CloseIcon />
+          </IconButton>
+          <Box
+            sx={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 2
+            }}
+          >
             {selectedImage && (
               <img
-                key={selectedImage} // Add key to force remount
-                src={selectedImage ? getGoogleDriveImageUrl(selectedImage) : ''}
+                src={selectedImage}
                 alt="Preview"
                 style={{
                   maxWidth: '100%',
@@ -1335,25 +1824,26 @@ const ItemDetailsPage = () => {
                   objectFit: 'contain'
                 }}
                 onError={(e) => {
-                  if (!selectedImage) return; // Don't process if dialog is closing
+                  if (!selectedImage) return;
                   e.target.onerror = null;
                   console.error('Failed to load image:', selectedImage);
+                  
                   // Try alternative URL format
-                  if (selectedImage && selectedImage.includes('drive.google.com')) {
+                  if (selectedImage.includes('drive.google.com')) {
                     const fileId = selectedImage.match(/\/file\/d\/([^/]+)/)?.[1];
                     if (fileId) {
-                      const altUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+                      const altUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
                       console.log('Trying alternative URL:', altUrl);
                       e.target.src = altUrl;
                       return;
                     }
                   }
+                  
                   e.target.src = '/placeholder-image.png';
-                  showSnackbar('Error loading image. Please check if the image URL is correct and accessible.', 'error');
                 }}
               />
             )}
-          </DialogContent>
+          </Box>
         </Dialog>
 
         {/* Snackbar */}
@@ -1380,4 +1870,4 @@ const ItemDetailsPage = () => {
   );
 };
 
-export default ItemDetailsPage;
+export default React.memo(ItemDetailsPage);

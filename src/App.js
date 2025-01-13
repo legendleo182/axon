@@ -1,16 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { Box, Container, useMediaQuery } from '@mui/material';
+import { Box, Container, useMediaQuery, CircularProgress } from '@mui/material';
 import theme from './theme';
-import LoginPage from './pages/LoginPage';
-import MainPage from './pages/MainPage';
-import StockPage from './pages/StockPage';
-import ItemDetailsPage from './pages/ItemDetailsPage';
-import IpManagementPage from './pages/IpManagementPage';
 import Header from './components/Header';
 import { supabase } from './supabaseClient';
+
+// Lazy load components
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const MainPage = lazy(() => import('./pages/MainPage'));
+const StockPage = lazy(() => import('./pages/StockPage'));
+const ItemDetailsPage = lazy(() => import('./pages/ItemDetailsPage'));
+const IpManagementPage = lazy(() => import('./pages/IpManagementPage'));
+
+// Loading component
+const LoadingScreen = () => (
+  <Box
+    sx={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      minHeight: '100vh',
+      background: theme.palette.background.default,
+    }}
+  >
+    <CircularProgress />
+  </Box>
+);
 
 function App() {
   const [session, setSession] = useState(null);
@@ -55,75 +72,77 @@ function App() {
               bgcolor: 'background.default'
             }}
           >
-            <Routes>
-              <Route 
-                path="/login" 
-                element={
-                  session ? (
-                    <Navigate to="/" replace />
-                  ) : (
-                    <LoginPage setSession={setSession} />
-                  )
-                } 
-              />
-              <Route
-                path="/"
-                element={
-                  session ? (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                      <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
-                        <MainPage />
-                      </Container>
-                    </Box>
-                  ) : (
-                    <Navigate to="/login" replace />
-                  )
-                }
-              />
-              <Route
-                path="/stock/:type"
-                element={
-                  session ? (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                      <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
-                        <StockPage />
-                      </Container>
-                    </Box>
-                  ) : (
-                    <Navigate to="/login" replace />
-                  )
-                }
-              />
-              <Route
-                path="/item/:type/:id"
-                element={
-                  session ? (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                      <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
-                        <ItemDetailsPage />
-                      </Container>
-                    </Box>
-                  ) : (
-                    <Navigate to="/login" replace />
-                  )
-                }
-              />
-              <Route
-                path="/ip-management"
-                element={
-                  session ? (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                      <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
-                        <IpManagementPage />
-                      </Container>
-                    </Box>
-                  ) : (
-                    <Navigate to="/login" replace />
-                  )
-                }
-              />
-              <Route path="*" element={<Navigate to={session ? "/" : "/login"} replace />} />
-            </Routes>
+            <Suspense fallback={<LoadingScreen />}>
+              <Routes>
+                <Route 
+                  path="/login" 
+                  element={
+                    session ? (
+                      <Navigate to="/" replace />
+                    ) : (
+                      <LoginPage setSession={setSession} />
+                    )
+                  } 
+                />
+                <Route
+                  path="/"
+                  element={
+                    session ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                        <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
+                          <MainPage />
+                        </Container>
+                      </Box>
+                    ) : (
+                      <Navigate to="/login" replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/stock/:type"
+                  element={
+                    session ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                        <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
+                          <StockPage />
+                        </Container>
+                      </Box>
+                    ) : (
+                      <Navigate to="/login" replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/item/:type/:id"
+                  element={
+                    session ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                        <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
+                          <ItemDetailsPage />
+                        </Container>
+                      </Box>
+                    ) : (
+                      <Navigate to="/login" replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/ip-management"
+                  element={
+                    session ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                        <Container maxWidth={false} sx={{ flex: 1, py: 3 }}>
+                          <IpManagementPage />
+                        </Container>
+                      </Box>
+                    ) : (
+                      <Navigate to="/login" replace />
+                    )
+                  }
+                />
+                <Route path="*" element={<Navigate to={session ? "/" : "/login"} replace />} />
+              </Routes>
+            </Suspense>
           </Container>
         </Box>
       </Router>

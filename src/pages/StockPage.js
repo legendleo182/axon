@@ -63,7 +63,7 @@ const StockPage = () => {
   };
 
   const getGoogleDriveImageUrl = (url) => {
-    console.log('Original URL:', url);
+    console.log('Processing URL:', url);
     try {
       if (!url) return '';
       
@@ -83,19 +83,10 @@ const StockPage = () => {
         if (fileId) {
           // Remove any additional parameters from fileId
           fileId = fileId.split('&')[0].split('?')[0];
-          // Using direct Google Drive content URL
-          return `https://drive.google.com/uc?export=view&id=${fileId}`;
+          console.log('Extracted file ID:', fileId);
+          // Use the direct thumbnail URL which is more reliable
+          return `https://lh3.googleusercontent.com/d/${fileId}`;
         }
-      }
-      
-      // If it's already a direct image URL, return as is
-      if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        return url;
-      }
-      
-      // If it's already a Google Photos URL, return as is
-      if (url.includes('photos.google.com') || url.includes('lh3.googleusercontent.com')) {
-        return url;
       }
       
       return url;
@@ -103,6 +94,14 @@ const StockPage = () => {
       console.error('Error processing URL:', error);
       return url;
     }
+  };
+
+  const handleImageClick = (imageUrl) => {
+    if (!imageUrl) return;
+    console.log('Original image URL:', imageUrl);
+    const processedUrl = getGoogleDriveImageUrl(imageUrl);
+    console.log('Processed image URL:', processedUrl);
+    setSelectedImage(processedUrl);
   };
 
   const handleCloseImage = () => {
@@ -751,7 +750,7 @@ const StockPage = () => {
                                     <IconButton
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setSelectedImage(item.image_url);
+                                        handleImageClick(item.image_url);
                                       }}
                                       sx={{ 
                                         p: { xs: 0.5, sm: 1 }
@@ -1006,9 +1005,8 @@ const StockPage = () => {
           {/* Image Preview Dialog */}
           <Dialog
             open={Boolean(selectedImage)}
-            onClose={handleCloseImage}
+            onClose={() => setSelectedImage(null)}
             maxWidth="lg"
-            onClick={handleDialogClick}
             PaperProps={{
               sx: {
                 width: '90vw',
@@ -1024,46 +1022,35 @@ const StockPage = () => {
               }
             }}
           >
-            <DialogContent 
-              sx={{ 
-                p: 0, 
-                height: '100%', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                cursor: 'pointer' 
+            <IconButton
+              onClick={() => setSelectedImage(null)}
+              sx={{
+                position: 'absolute',
+                right: 8,
+                top: 8,
+                color: 'white',
+                bgcolor: 'rgba(0, 0, 0, 0.5)',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 0, 0, 0.7)'
+                },
+                zIndex: 1
               }}
-              onClick={handleDialogClick}
             >
-              <IconButton
-                onClick={handleCloseImage}
-                sx={{
-                  position: 'absolute',
-                  right: 8,
-                  top: 8,
-                  color: 'white',
-                  bgcolor: 'rgba(0, 0, 0, 0.5)',
-                  '&:hover': {
-                    bgcolor: 'rgba(0, 0, 0, 0.7)'
-                  },
-                  zIndex: 1200
-                }}
-              >
-                <CloseIcon />
-              </IconButton>
-              <Box
-                sx={{
-                  position: 'relative',
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
+              <CloseIcon />
+            </IconButton>
+            <Box
+              sx={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                p: 2
+              }}
+            >
+              {selectedImage && (
                 <img
-                  key={selectedImage} // Add key to force remount
-                  src={selectedImage ? getGoogleDriveImageUrl(selectedImage) : ''}
+                  src={selectedImage}
                   alt="Preview"
                   style={{
                     maxWidth: '100%',
@@ -1071,25 +1058,26 @@ const StockPage = () => {
                     objectFit: 'contain'
                   }}
                   onError={(e) => {
-                    if (!selectedImage) return; // Don't process if dialog is closing
+                    if (!selectedImage) return;
                     e.target.onerror = null;
                     console.error('Failed to load image:', selectedImage);
+                    
                     // Try alternative URL format
-                    if (selectedImage && selectedImage.includes('drive.google.com')) {
+                    if (selectedImage.includes('drive.google.com')) {
                       const fileId = selectedImage.match(/\/file\/d\/([^/]+)/)?.[1];
                       if (fileId) {
-                        const altUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+                        const altUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
                         console.log('Trying alternative URL:', altUrl);
                         e.target.src = altUrl;
                         return;
                       }
                     }
+                    
                     e.target.src = '/placeholder-image.png';
-                    showSnackbar('Error loading image. Please check if the image URL is correct and accessible.', 'error');
                   }}
                 />
-              </Box>
-            </DialogContent>
+              )}
+            </Box>
           </Dialog>
 
           {/* Delete Confirmation Dialog */}
