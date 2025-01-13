@@ -63,36 +63,66 @@ const isValidUrl = (url) => {
 };
 
 const getGoogleDriveImageUrl = (url) => {
-  console.log('Processing URL:', url);
+  if (!url) return '';
+  
   try {
-    if (!url) return '';
+    // Extract file ID from various URL formats
+    let fileId = '';
     
-    // Check if it's a Google Drive URL
-    if (url.includes('drive.google.com')) {
-      let fileId = '';
-      
-      // Handle different Google Drive URL formats
-      if (url.includes('/file/d/')) {
-        fileId = url.match(/\/file\/d\/([^/]+)/)?.[1];
-      } else if (url.includes('id=')) {
-        fileId = url.match(/id=([^&]+)/)?.[1];
-      } else if (url.includes('open?id=')) {
-        fileId = url.match(/open\?id=([^&]+)/)?.[1];
-      }
-      
-      if (fileId) {
-        // Remove any additional parameters from fileId
-        fileId = fileId.split('&')[0].split('?')[0];
-        console.log('Extracted file ID:', fileId);
-        // Use the direct thumbnail URL which is more reliable
-        return `https://lh3.googleusercontent.com/d/${fileId}`;
-      }
+    if (url.includes('lh3.googleusercontent.com/d/')) {
+      fileId = url.split('/d/')[1]?.split('?')[0];
+    } else if (url.includes('drive.usercontent.google.com')) {
+      fileId = url.match(/[?&]id=([^&]+)/)?.[1];
+    } else if (url.includes('drive.google.com/file/d/')) {
+      fileId = url.match(/\/file\/d\/([^/]+)/)?.[1];
+    } else if (url.includes('drive.google.com')) {
+      fileId = url.match(/id=([^&]+)/)?.[1];
+    }
+
+    if (fileId) {
+      // Clean up the file ID
+      fileId = fileId.split('&')[0].split('?')[0].split('/')[0];
+      // Try the export=view format first as it's more reliable
+      return `https://drive.google.com/uc?export=view&id=${fileId}`;
     }
     
     return url;
   } catch (error) {
     console.error('Error processing URL:', error);
     return url;
+  }
+};
+
+const getImageFallbackUrls = (url) => {
+  try {
+    let fileId = '';
+    
+    if (url.includes('lh3.googleusercontent.com/d/')) {
+      fileId = url.split('/d/')[1]?.split('?')[0];
+    } else if (url.includes('drive.usercontent.google.com')) {
+      fileId = url.match(/[?&]id=([^&]+)/)?.[1];
+    } else if (url.includes('drive.google.com/file/d/')) {
+      fileId = url.match(/\/file\/d\/([^/]+)/)?.[1];
+    } else if (url.includes('drive.google.com')) {
+      fileId = url.match(/id=([^&]+)/)?.[1];
+    }
+
+    if (!fileId) return [];
+
+    // Clean up the file ID
+    fileId = fileId.split('&')[0].split('?')[0].split('/')[0];
+
+    // Return array of possible URLs to try
+    return [
+      `https://drive.google.com/uc?export=view&id=${fileId}`,
+      `https://drive.google.com/thumbnail?id=${fileId}&sz=w2000`,
+      `https://lh3.googleusercontent.com/d/${fileId}?sz=w2000`,
+      `https://drive.usercontent.google.com/download?id=${fileId}`,
+      `https://lh3.googleusercontent.com/d/${fileId}`
+    ];
+  } catch (error) {
+    console.error('Error generating fallback URLs:', error);
+    return [];
   }
 };
 
@@ -1816,30 +1846,36 @@ const ItemDetailsPage = () => {
           >
             {selectedImage && (
               <img
-                src={selectedImage}
+                key={selectedImage}
+                src={getGoogleDriveImageUrl(selectedImage)}
                 alt="Preview"
                 style={{
                   maxWidth: '100%',
                   maxHeight: '100%',
-                  objectFit: 'contain'
+                  objectFit: 'contain',
+                  padding: '12px'
                 }}
+                referrerPolicy="no-referrer"
                 onError={(e) => {
                   if (!selectedImage) return;
                   e.target.onerror = null;
                   console.error('Failed to load image:', selectedImage);
+
+                  // Get array of fallback URLs
+                  const fallbackUrls = getImageFallbackUrls(selectedImage);
+                  const currentUrl = e.target.src;
                   
-                  // Try alternative URL format
-                  if (selectedImage.includes('drive.google.com')) {
-                    const fileId = selectedImage.match(/\/file\/d\/([^/]+)/)?.[1];
-                    if (fileId) {
-                      const altUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
-                      console.log('Trying alternative URL:', altUrl);
-                      e.target.src = altUrl;
-                      return;
-                    }
+                  // Find next URL to try
+                  const nextUrlIndex = fallbackUrls.findIndex(url => url === currentUrl) + 1;
+                  if (nextUrlIndex < fallbackUrls.length) {
+                    console.log('Trying next fallback URL:', fallbackUrls[nextUrlIndex]);
+                    e.target.src = fallbackUrls[nextUrlIndex];
+                    return;
                   }
                   
+                  // If all fallbacks fail
                   e.target.src = '/placeholder-image.png';
+                  showSnackbar('Error loading image. Please check if the image URL is correct and accessible.', 'error');
                 }}
               />
             )}
